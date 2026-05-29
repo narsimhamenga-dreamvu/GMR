@@ -74,6 +74,8 @@ def main():
     parser.add_argument("--tgt_fps", type=int)
     parser.add_argument("--output_root")
     parser.add_argument("--run_id")
+    parser.add_argument("--n_workers", type=int)
+    parser.add_argument("--smplx_folder")
     parser.add_argument("--skip", nargs="*", default=[],
                         choices=["retarget", "render", "clip", "compare"],
                         help="Steps to skip")
@@ -94,7 +96,7 @@ def main():
 
     # CLI overrides
     for key in ["episode_csv", "video_mapping_csv", "robot", "n_episodes",
-                "src_fps", "tgt_fps", "output_root", "run_id"]:
+                "src_fps", "tgt_fps", "output_root", "run_id", "n_workers", "smplx_folder"]:
         cli_val = getattr(args, key, None)
         if cli_val is not None:
             cfg[key] = cli_val
@@ -120,16 +122,25 @@ def main():
     else:
         active = set(all_steps)
 
-    n_episodes = cfg.get("n_episodes")  # None means all rows
+    n_episodes   = cfg.get("n_episodes")   # None means all rows
+    n_workers    = cfg.get("n_workers")    # None means all CPU cores
+    smplx_folder = cfg.get("smplx_folder") # None means default assets/body_models
+
     print(f"Pipeline config  : {config_path}")
     print(f"Run root         : {run_root}")
     print(f"Episodes         : {'all' if n_episodes is None else n_episodes}")
     print(f"Robot            : {cfg['robot']}")
+    print(f"Workers          : {'all cores' if n_workers is None else n_workers}")
     print(f"Active steps     : {', '.join(s for s in all_steps if s in active)}")
 
     def n_ep_args():
-        """Return --n_episodes flag only when a limit is set."""
         return ["--n_episodes", str(n_episodes)] if n_episodes is not None else []
+
+    def n_workers_args():
+        return ["--n_workers", str(n_workers)] if n_workers is not None else []
+
+    def smplx_folder_args():
+        return ["--smplx_folder", smplx_folder] if smplx_folder is not None else []
 
     # ── Step 1: Retarget ──────────────────────────────────────────────────────
     if "retarget" in active:
@@ -141,6 +152,8 @@ def main():
             "--src_fps",    str(cfg["src_fps"]),
             "--tgt_fps",    str(cfg["tgt_fps"]),
             *n_ep_args(),
+            *n_workers_args(),
+            *smplx_folder_args(),
         ], "retarget: CoMotion → robot .pkl")
 
     # ── Step 2: Render robot videos ───────────────────────────────────────────

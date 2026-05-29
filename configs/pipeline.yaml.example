@@ -19,6 +19,8 @@ robot: unitree_g1      # key from ROBOT_XML_DICT in general_motion_retargeting/p
 src_fps: 25            # frame rate of the source CoMotion .pt files
 tgt_fps: 25            # target frame rate for retargeted robot motion (match src_fps to avoid resampling)
 # n_episodes: 20       # limit rows to process; omit (or comment out) to run all rows
+# n_workers: 96        # parallel workers for retarget step (default: all CPU cores)
+# smplx_folder: /path/to/body_models  # dir containing smplx/ subfolder (default: assets/body_models)
 
 # Steps to run — omit to run all four, or list a subset:
 #   retarget  : CoMotion .pt → per-episode robot motion .pkl  (no display needed)
