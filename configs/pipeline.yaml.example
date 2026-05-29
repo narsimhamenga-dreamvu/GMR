@@ -1,0 +1,38 @@
+# CoMotion → Robot Retargeting Pipeline Configuration
+#
+# Copy this file to configs/pipeline.yaml and fill in paths for your machine.
+# configs/pipeline.yaml is gitignored so machine-specific paths are never committed.
+#
+#   cp configs/pipeline.yaml.example configs/pipeline.yaml
+#   # edit configs/pipeline.yaml
+#   python scripts/run_pipeline.py --config configs/pipeline.yaml
+
+# ── Data inputs (machine-specific) ───────────────────────────────────────────
+# CSV produced by the episode extraction step
+episode_csv: /path/to/episode_stats.csv
+
+# CSV that maps each .pt file to its source video on disk
+video_mapping_csv: /path/to/video_mapping.csv
+
+# ── Pipeline parameters ───────────────────────────────────────────────────────
+robot: unitree_g1      # key from ROBOT_XML_DICT in general_motion_retargeting/params.py
+src_fps: 25            # frame rate of the source CoMotion .pt files
+tgt_fps: 25            # target frame rate for retargeted robot motion (match src_fps to avoid resampling)
+# n_episodes: 20       # limit rows to process; omit (or comment out) to run all rows
+
+# Steps to run — omit to run all four, or list a subset:
+#   retarget  : CoMotion .pt → per-episode robot motion .pkl  (no display needed)
+#   render    : .pkl → MuJoCo simulation video               (needs display/MuJoCo)
+#   clip      : source video → frame clip + bounding box     (needs bucket mount)
+#   compare   : source + robot → side-by-side comparison     (needs both above)
+# For a headless retarget-only run (e.g. on a remote machine without bucket mount):
+steps: [retarget]
+
+# ── Output layout (relative to GMR project root, or absolute) ────────────────
+# All outputs land under  <output_root>/<run_id>/
+#   pkls/           retargeted robot motion (.pkl per episode)
+#   videos/robot/   MuJoCo simulation renders
+#   videos/source/  source video clips with bounding-box overlay
+#   videos/comparison/  side-by-side comparison videos
+output_root: outputs
+run_id: ALIA_test
