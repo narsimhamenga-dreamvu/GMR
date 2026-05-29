@@ -164,9 +164,32 @@ def retarget_episode(row: dict, pt_cache: dict, robot: str, output_dir: str,
 
 # ── Multiprocessing worker ────────────────────────────────────────────────────
 
+def _init_worker():
+    """Pin each worker to a single thread so numpy/OpenBLAS doesn't over-subscribe cores."""
+    import os
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+        os.environ[var] = "1"
+
+
+def _make_chunks(rows: list, chunk_size: int) -> list[list]:
+    """
+    Group rows by .pt file, then split each group into chunks of chunk_size.
+    Rows within a chunk share the same .pt file → one load covers all of them.
+    """
+    groups: defaultdict[str, list] = defaultdict(list)
+    for row in rows:
+        groups[row["file"]].append(row)
+    chunks = []
+    for grp in groups.values():
+        for i in range(0, len(grp), chunk_size):
+            chunks.append(grp[i : i + chunk_size])
+    return chunks
+
+
 def _worker(args: tuple) -> tuple[int, int, int]:
     """
-    Process all episodes that share one .pt file.
+    Process one chunk of episodes (all from the same .pt file).
     Returns (n_done, n_skipped, n_failed).
     """
     rows, robot, output_dir, src_fps, tgt_fps, smplx_folder = args
@@ -226,28 +249,30 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # ── Group by .pt file for cache efficiency ────────────────────────────────
-    groups: defaultdict[str, list] = defaultdict(list)
-    for row in rows:
-        groups[row["file"]].append(row)
-
     n_workers = args.n_workers or multiprocessing.cpu_count()
-    n_workers = min(n_workers, len(groups))
 
+    # Auto-tune chunk size: aim for ~4× more work items than workers so all
+    # cores stay busy and load balances well.  Each chunk shares one .pt load.
+    chunk_size = max(1, len(rows) // (n_workers * 4))
+    chunks     = _make_chunks(rows, chunk_size)
+    n_workers  = min(n_workers, len(chunks))
+
+    n_unique_pt = len({r["file"] for r in rows})
     print(f"Episodes  : {len(rows)}")
-    print(f"PT files  : {len(groups)}")
+    print(f"PT files  : {n_unique_pt}")
+    print(f"Chunks    : {len(chunks)}  (chunk_size={chunk_size})")
     print(f"Workers   : {n_workers}")
     print(f"Output    : {args.output_dir}")
 
     work_items = [
-        (grp_rows, args.robot, args.output_dir, args.src_fps, args.tgt_fps, args.smplx_folder)
-        for grp_rows in groups.values()
+        (chunk, args.robot, args.output_dir, args.src_fps, args.tgt_fps, args.smplx_folder)
+        for chunk in chunks
     ]
 
     # ── Dispatch ──────────────────────────────────────────────────────────────
     total_done = total_skipped = total_failed = 0
 
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+    with ProcessPoolExecutor(max_workers=n_workers, initializer=_init_worker) as executor:
         futures = [executor.submit(_worker, item) for item in work_items]
         with tqdm(total=len(rows), unit="ep", desc="retarget") as pbar:
             for future in as_completed(futures):
